@@ -1,3 +1,8 @@
+# repository secrets (file, directory, or file with extension)
+/secrets
+secrets/
+secrets.*
+
 # Data directories.
 assets/
 checkpoints/
