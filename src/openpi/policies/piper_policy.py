@@ -28,12 +28,12 @@ class PiperInputs(transforms.DataTransformFn):
     model_type: _model.ModelType = _model.ModelType.PI0
 
     # dataset key map
-    base_image_key: str = "observation/images/stereo"
-    wrist1_key: str = "observation/images/wrist1"
-    wrist2_key: str = "observation/images/wrist2"
-    state_key: Optional[str] = None
-    actions_key: Optional[str] = "actions"
-    prompt_key: Optional[str] = "language_instruction"
+    base_image_key: str = "stereo"
+    wrist_left_key: str = "wrist.left"
+    wrist_right_key: str = "wrist.right"
+    state_key: str = 'state'
+    actions_key: str = "actions"
+    prompt_key: Optional[str] = "prompt"
 
     @property
     def total_action_dim(self) -> int:
@@ -54,16 +54,16 @@ class PiperInputs(transforms.DataTransformFn):
 
         # ----- images -----
         base = _parse_image(data[self.base_image_key])
-        wrist1 = _parse_image(data[self.wrist1_key]) if self.wrist1_key in data else np.zeros_like(base)
-        wrist2 = (
-            _parse_image(data[self.wrist2_key])
-            if self.two_arms and self.wrist2_key in data
+        wrist_left = _parse_image(data[self.wrist_left_key]) if self.wrist_left_key in data else np.zeros_like(base)
+        wrist_right = (
+            _parse_image(data[self.wrist_right_key])
+            if self.two_arms and self.wrist_right_key in data
             else np.zeros_like(base)
         )
 
         images = {
             "base_0_rgb": base,
-            "left_wrist_0_rgb": wrist1,
+            "left_wrist_0_rgb": wrist_left,
         }
         image_mask = {
             "base_0_rgb": np.True_,
@@ -71,8 +71,8 @@ class PiperInputs(transforms.DataTransformFn):
         }
 
         if self.two_arms:
-            images["right_wrist_1_rgb"] = wrist2
-            image_mask["right_wrist_1_rgb"] = np.True_
+            images["right_wrist_0_rgb"] = wrist_right
+            image_mask["right_wrist_0_rgb"] = np.True_
         else:
             # fill missing right wrist with zeros if PI0 expects all slots
             images["right_wrist_0_rgb"] = np.zeros_like(base)

@@ -7,9 +7,9 @@ from typing import Literal, Protocol, SupportsIndex, TypeVar
 
 import jax
 import jax.numpy as jnp
-import lerobot.common.datasets.lerobot_dataset as lerobot_dataset
 import numpy as np
 import torch
+from lerobot.datasets import lerobot_dataset
 
 import openpi.models.model as _model
 import openpi.training.config as _config
@@ -146,8 +146,8 @@ def create_torch_dataset(
     )
 
     if data_config.prompt_from_task:
-        dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
-
+        task_id2name = {i: v for i, v in enumerate(dataset_meta.tasks.index)}
+        dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(task_id2name)])
     return dataset
 
 

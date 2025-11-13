@@ -20,6 +20,7 @@ import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.piper_policy as piper_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -454,6 +455,58 @@ class LeRobotDROIDDataConfig(DataConfigFactory):
 
 
 @dataclasses.dataclass(frozen=True)
+class LeRobotPiperDataConfig(DataConfigFactory):
+    
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Boilerplate for remapping keys from the LeRobot dataset. We assume no renaming needed here.
+        repack_transform = _transforms.Group(
+            inputs=[
+                
+                # TODO: Check wrist naming and rename under piper-server
+                _transforms.RepackTransform(
+                    {
+                        'wrist.right': 'observation.images.wrist1',
+                        'wrist.left': 'observation.images.wrist2',
+                        'stereo': 'observation.images.stereo',
+                        'state': 'observation.state',
+                        'actions': 'action',
+                        'prompt': 'prompt'
+                    }
+                )
+            ]
+        )
+        # These transforms are the ones we wrote earlier.
+        data_transforms = _transforms.Group(
+            inputs=[piper_policy.PiperInputs( model_type=model_config.model_type)],
+            outputs=[piper_policy.PiperOutputs()],
+        )
+
+        # Convert absolute actions to delta actions.
+        # By convention, we do not convert the gripper action (7th dimension).
+        # TODO: Make sure grippers in position of state array [6] and [13]
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        # You do not need to change anything here for your own dataset.
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+@dataclasses.dataclass(frozen=True)
 class TrainConfig:
     # Name of the config. Must be unique. Will be used to reference this config.
     name: tyro.conf.Suppress[str]
@@ -549,6 +602,21 @@ class TrainConfig:
 
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
+    TrainConfig(
+        name="pi0_piper_debug",
+        model=pi0_config.Pi0Config(),
+        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
+        data=LeRobotPiperDataConfig(
+            repo_id="ETHRC/piper_towel_v0",
+            assets=AssetsConfig(
+                assets_dir=_download.DEFAULT_CACHE_DIR,
+                asset_id="ETHRC/piper_towel_v0",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+    ),
     #
     # Inference Aloha configs.
     #
