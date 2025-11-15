@@ -1,5 +1,10 @@
+import dataclasses
 import pathlib
+import os
 
+os.environ["JAX_PLATFORMS"] = "cpu"
+
+import pytest
 from openpi.models.tokenizer import PaligemmaTokenizer
 from pathlib import Path
 import jax.numpy as jnp
@@ -11,10 +16,10 @@ from sarm.model.reward_sarm import RewardSarm
 
 import openpi.models.pi0_config as pi0_config
 from openpi.shared.download import DEFAULT_CACHE_DIR
-from openpi.training.config import LeRobotPiperDataConfig, AssetsConfig, DataConfig
+from openpi.training.config import LeRobotPiperDataConfig, AssetsConfig, DataConfig, _CONFIGS_DICT
 from openpi.training.data_loader import create_torch_dataset, transform_dataset
 from openpi_client import image_tools
-from scripts import compute_norm_stats
+from scripts import compute_norm_stats, train
 
 
 def test_happy_path_get_rewards_from_sarm():
@@ -137,3 +142,18 @@ def test_data_configuration_with_normalization():
     # normalized values should not be equal
     assert np.array_equal(frame_1['state'], frame_2['state']) == False
     assert np.array_equal(frame_1['actions'], frame_2['actions']) == False
+
+@pytest.mark.parametrize("config_name", ["pi0_piper_debug"])
+def test_train_policy(config_name, tmp_path, monkeypatch):
+    config = dataclasses.replace(
+        _CONFIGS_DICT[config_name],  # noqa: SLF001
+        batch_size=2,
+        exp_name="test",
+        overwrite=False,
+        resume=False,
+        num_train_steps=1,
+        log_interval=1,
+        checkpoint_base_dir=str(tmp_path / "checkpoint"),
+
+    )
+    train.main(config)

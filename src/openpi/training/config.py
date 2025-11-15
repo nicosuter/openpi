@@ -604,18 +604,20 @@ class TrainConfig:
 _CONFIGS = [
     TrainConfig(
         name="pi0_piper_debug",
-        model=pi0_config.Pi0Config(),
+        model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
         assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
         data=LeRobotPiperDataConfig(
             repo_id="ETHRC/piper_towel_v0",
             assets=AssetsConfig(
-                assets_dir=_download.DEFAULT_CACHE_DIR,
+                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pi0_piper_debug"),
                 asset_id="ETHRC/piper_towel_v0",
             ),
             base_config=DataConfig(
                 prompt_from_task=True,
             ),
         ),
+        num_train_steps=10,
+        wandb_enabled=False,
     ),
     #
     # Inference Aloha configs.
