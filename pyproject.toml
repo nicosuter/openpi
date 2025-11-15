@@ -38,6 +38,8 @@ dependencies = [
     "polars>=1.30.0",
     "lerobot==0.4.0",
     "sarm",
+    "piper-teleop",
+    "tactile-teleop-python-sdk",
 ]
 
 
@@ -72,6 +74,8 @@ override-dependencies = [
 openpi-client = { workspace = true }
 dlimp = { git = "https://github.com/kvablack/dlimp", rev = "ad72ce3a9b414db2185bc0b38461d4101a65477a" }
 sarm = { git = "https://github.com/ETHRoboticsClub/sarm", branch = "feature/openpi_integration" }
+tactile-teleop-python-sdk = { git = "https://github.com/TactileRoboticsAI/tactile-teleop-python-sdk.git" }
+piper-teleop = { git = "https://github.com/ETHRoboticsClub/piper-robot-server.git", branch = "feature/lerobt_register_piper" }
 
 [tool.uv.workspace]
 members = ["packages/*"]

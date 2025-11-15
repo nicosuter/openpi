@@ -80,6 +80,7 @@ class Runtime:
     def _step(self) -> None:
         """A single step of the runtime loop."""
         observation = self._environment.get_observation()
+        
         action = self._agent.get_action(observation)
         self._environment.apply_action(action)
 

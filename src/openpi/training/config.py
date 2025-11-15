@@ -620,7 +620,7 @@ _CONFIGS = [
         wandb_enabled=False,
     ),
     TrainConfig(
-        name="pick_and_place_v2_lora",
+        name="  ",
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
         assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
         data=LeRobotPiperDataConfig(
