@@ -3124,7 +3124,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=11.0.0" },
     { name = "polars", specifier = ">=1.30.0" },
     { name = "rich", specifier = ">=14.0.0" },
-    { name = "sarm", editable = "../sarm" },
+    { name = "sarm", git = "https://github.com/ETHRoboticsClub/sarm?branch=feature%2Fopenpi_integration" },
     { name = "sentencepiece", specifier = ">=0.2.0" },
     { name = "torch", specifier = "==2.7.1" },
     { name = "tqdm-loggable", specifier = ">=0.2" },
@@ -4248,7 +4248,7 @@ wheels = [
 [[package]]
 name = "sarm"
 version = "0.1.0"
-source = { editable = "../sarm" }
+source = { git = "https://github.com/ETHRoboticsClub/sarm?branch=feature%2Fopenpi_integration#6bcd681ba34a67eca1de9d24855941993ee5614b" }
 dependencies = [
     { name = "einops" },
     { name = "equinox" },
@@ -4261,29 +4261,6 @@ dependencies = [
     { name = "tokenizers" },
     { name = "torch" },
     { name = "zarr" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "einops", specifier = ">=0.8.1" },
-    { name = "equinox", specifier = ">=0.13.2" },
-    { name = "faker", specifier = ">=37.12.0" },
-    { name = "jax", extras = ["cuda12"], specifier = ">=0.5.0" },
-    { name = "lerobot", specifier = "==0.4.0" },
-    { name = "opencv-contrib-python", specifier = ">=4.10.0.84" },
-    { name = "opencv-python", specifier = ">=4.10.0.84" },
-    { name = "optax", specifier = ">=0.2.6" },
-    { name = "tokenizers", specifier = ">=0.21,<0.22" },
-    { name = "torch", specifier = ">=2.7" },
-    { name = "zarr", specifier = ">=2.18.3" },
-]
-
-[package.metadata.requires-dev]
-convert = [{ name = "open-clip-torch", specifier = ">=3.2.0" }]
-test = [
-    { name = "open-clip-torch", specifier = ">=3.2.0" },
-    { name = "pillow", specifier = ">=12.0.0" },
-    { name = "pytest", specifier = ">=8.4.2" },
 ]
 
 [[package]]
