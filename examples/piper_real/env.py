@@ -5,6 +5,11 @@ from openpi_client import image_tools
 from openpi_client.runtime import environment as _environment
 from typing_extensions import override
 
+cam_map = {
+    "stereo": "stereo",
+    "wrist1": "wrist1",
+    "wrist2": "wrist2",
+}
 
 class PiperRealEnvironment(_environment.Environment):
     """Environment wrapper for LerobotPiper robot."""
@@ -56,18 +61,18 @@ class PiperRealEnvironment(_environment.Environment):
 
         return {
             "state": state,
-            "images": images,
+            **images,
+            "prompt": "pick and place",
         }
 
     @override
     def apply_action(self, action: dict) -> None:
-        actions = action["actions"]
-
         # Convert from array to dict format expected by LerobotPiper
         action_dict = {}
-        for i in range(7):
-            action_dict[f"L.joint_{i}"] = float(actions[i])
-            action_dict[f"R.joint_{i}"] = float(actions[i + 7])
+        for i, v in enumerate(action['actions_arm0']):
+            action_dict[f"L.joint_{i}"] = float(v)
+        for i, v in enumerate(action['actions_arm1']):
+            action_dict[f"R.joint_{i}"] = float(v)
 
         self._robot.send_action(action_dict)
 

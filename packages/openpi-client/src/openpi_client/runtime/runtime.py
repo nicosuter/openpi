@@ -2,6 +2,7 @@ import logging
 import threading
 import time
 
+import cv2
 from openpi_client.runtime import agent as _agent
 from openpi_client.runtime import environment as _environment
 from openpi_client.runtime import subscriber as _subscriber
@@ -80,8 +81,17 @@ class Runtime:
     def _step(self) -> None:
         """A single step of the runtime loop."""
         observation = self._environment.get_observation()
-        
+        cam_names = ["stereo", "wrist1", "wrist2"]
+        # Show all camera images side by side in one window
+        imgs = [observation[cam_name] for cam_name in cam_names]
+        # Resize images to the same height if necessary
+        min_height = min(img.shape[0] for img in imgs)
+        imgs_resized = [cv2.resize(img, (int(img.shape[1] * min_height / img.shape[0]), min_height)) if img.shape[0] != min_height else img for img in imgs]
+        show_img = cv2.hconcat(imgs_resized)
+        cv2.imshow("cams", show_img)
+        cv2.waitKey(1)
         action = self._agent.get_action(observation)
+        print(action["actions"] - observation["state"])
         self._environment.apply_action(action)
 
         for subscriber in self._subscribers:

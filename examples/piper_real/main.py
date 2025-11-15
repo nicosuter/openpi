@@ -36,10 +36,7 @@ def main(args: Args) -> None:
 
     # Create robot config
     robot_config = LerobotPiperConfig(
-        no_robot=False,
-        cameras=dict(),
-        
-        
+        no_robot=False,        
     )
 
     # Create runtime with Piper environment
