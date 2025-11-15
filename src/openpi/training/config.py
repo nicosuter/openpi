@@ -622,11 +622,11 @@ _CONFIGS = [
     TrainConfig(
         name="pick_and_place_v2_lora",
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
-        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
+        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pick_and_place_v2_lora"),
         data=LeRobotPiperDataConfig(
             repo_id="ETHRC/pick_and_place_v2",
             assets=AssetsConfig(
-                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pick_and_place_v2"),
+                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pick_and_place_v2_lora"),
                 asset_id="ETHRC/pick_and_place_v2",
             ),
             base_config=DataConfig(
@@ -636,6 +636,10 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
         num_train_steps=30_000,
         wandb_enabled=True,
+        freeze_filter=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter(),
+        ema_decay=None,
     ),
     #
     # Inference Aloha configs.
