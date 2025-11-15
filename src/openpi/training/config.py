@@ -622,11 +622,11 @@ _CONFIGS = [
     TrainConfig(
         name="pick_and_place_v2_lora",
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
-        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pick_and_place_v2_lora"),
+        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
         data=LeRobotPiperDataConfig(
             repo_id="ETHRC/pick_and_place_v2",
             assets=AssetsConfig(
-                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pick_and_place_v2_lora"),
+                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / 'pick_and_place_v2_lora' ),
                 asset_id="ETHRC/pick_and_place_v2",
             ),
             base_config=DataConfig(
