@@ -90,6 +90,10 @@ class PiperInputs(transforms.DataTransformFn):
         if self.prompt_key and self.prompt_key in data:
             inputs["prompt"] = data[self.prompt_key]
 
+        # Reward Model
+        for key in data:
+            if 'gap_data' in key:
+                inputs[key] = data[key]
         return inputs
 
 

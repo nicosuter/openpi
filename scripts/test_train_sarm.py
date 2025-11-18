@@ -16,16 +16,19 @@ from sarm.model.reward_sarm import RewardSarm
 
 import openpi.models.pi0_config as pi0_config
 from openpi.shared.download import DEFAULT_CACHE_DIR
-from openpi.training.config import LeRobotPiperDataConfig, AssetsConfig, DataConfig, _CONFIGS_DICT
-from openpi.training.data_loader import create_torch_dataset, transform_dataset
+from openpi.training.config import LeRobotPiperDataConfig, AssetsConfig, DataConfig, _CONFIGS_DICT, \
+    LeRobotPiperSarmDataConfig
+from openpi.training.data_loader import create_torch_dataset, transform_dataset, create_torch_data_loader
 from openpi_client import image_tools
 from scripts import compute_norm_stats, train
 
 
 def test_happy_path_get_rewards_from_sarm():
     class SarmMock:
-        def __init__(self):
+        def __init__(self, T=9):
             self.n = 0
+            self.T = T
+            
     
         def __call__(self, batch):
             self.n += 1
@@ -49,7 +52,7 @@ def test_happy_path_get_rewards_from_sarm():
     
 def test_data_configuration():
     action_horizon = 42
-    piper_config=  LeRobotPiperDataConfig(
+    piper_config = LeRobotPiperDataConfig(
         repo_id='ETHRC/piper_towel_v0',
         assets=AssetsConfig(
             assets_dir="",
@@ -61,19 +64,19 @@ def test_data_configuration():
     )
     data_config = piper_config.create(assets_dirs=Path('/'), model_config=pi0_config.Pi0Config())
     lerobot_dataset = create_torch_dataset(data_config=data_config, action_horizon=action_horizon, model_config=None)
-    frame = lerobot_dataset[12] 
+    frame = lerobot_dataset[12]
     assert frame is not None
     assert 'observation.images.wrist1' in frame
     assert 'action' in frame
     assert 'observation.state' in frame
-    assert 'prompt' in frame 
+    assert 'prompt' in frame
     assert frame['action'].shape == (action_horizon, 14)
     assert frame['prompt'] == frame['task']
-    
+
     # Apply transformations
     dataset_transformed = transform_dataset(lerobot_dataset, data_config, skip_norm_stats=True)
     frame_transformed = dataset_transformed[12]
-    
+
     # Compare image inputs, transformed dataset resizes to 224,224,3
     image_map = {'observation.images.wrist1': 'right_wrist_0_rgb',
                  'observation.images.wrist2': 'left_wrist_0_rgb',
@@ -115,7 +118,7 @@ def test_data_configuration_with_normalization():
     repo_id = 'ETHRC/piper_towel_v0'
     train_config_id = 'pi0_piper_debug'
     assets_dir = pathlib.Path(DEFAULT_CACHE_DIR).expanduser() / train_config_id
-    if not (assets_dir / repo_id  /  'norm_stats.json').exists():
+    if not (assets_dir / repo_id / 'norm_stats.json').exists():
         compute_norm_stats.main(train_config_id)
     action_horizon = 42
     piper_config = LeRobotPiperDataConfig(
@@ -134,8 +137,8 @@ def test_data_configuration_with_normalization():
     dataset_transformed_norm = transform_dataset(lerobot_dataset, data_config, skip_norm_stats=False)
     frame_1 = dataset_transformed[100]
     frame_2 = dataset_transformed_norm[100]
-    
-    for key in (set(frame_1.keys()) - {'state', 'actions' ,'image'}):
+
+    for key in (set(frame_1.keys()) - {'state', 'actions', 'image'}):
         np.testing.assert_array_equal(frame_1[key], frame_2[key])
     for key in frame_1['image']:
         np.testing.assert_array_equal(frame_1['image'][key], frame_2['image'][key])
@@ -143,8 +146,61 @@ def test_data_configuration_with_normalization():
     assert np.array_equal(frame_1['state'], frame_2['state']) == False
     assert np.array_equal(frame_1['actions'], frame_2['actions']) == False
 
+
 @pytest.mark.parametrize("config_name", ["pi0_piper_debug"])
 def test_train_policy(config_name, tmp_path, monkeypatch):
+    config = dataclasses.replace(
+        _CONFIGS_DICT[config_name],  # noqa: SLF001
+        batch_size=2,
+        exp_name="test",
+        overwrite=False,
+        resume=False,
+        num_train_steps=1,
+        log_interval=1,
+        checkpoint_base_dir=str(tmp_path / "checkpoint"),
+
+    )
+    train.main(config)
+
+
+def test_get_reward_data():
+    action_horizon = 42
+    piper_config = LeRobotPiperSarmDataConfig(
+        repo_id='ETHRC/piper_towel_v0',
+        assets=AssetsConfig(
+            assets_dir="",
+            asset_id=None,
+        ),
+        base_config=DataConfig(
+            prompt_from_task=True,
+        ),
+        reward_model='sarm'
+    )
+    sarm_keys = {'gap_data_0.observation.state', 'gap_data_0.observation.images.wrist1',
+                 'gap_data_0.observation.images.wrist2', 'gap_data_0.observation.images.stereo',
+                 'gap_data_1.observation.state', 'gap_data_1.observation.images.wrist1',
+                 'gap_data_1.observation.images.wrist2', 'gap_data_1.observation.images.stereo'}
+    data_config = piper_config.create(assets_dirs=Path('/'), model_config=pi0_config.Pi0Config())
+    lerobot_dataset = create_torch_dataset(data_config=data_config, action_horizon=action_horizon, model_config=None)
+    dataset_transformed = transform_dataset(lerobot_dataset, data_config, skip_norm_stats=True)
+    data_item = dataset_transformed[0]
+    assert sarm_keys < set(data_item.keys())
+
+    # Testing Dataloader
+    data_loader = create_torch_data_loader(data_config=data_config,
+                                           model_config=pi0_config.Pi0Config(),
+                                           action_horizon=action_horizon,
+                                           batch_size=2,
+                                           skip_norm_stats=True)
+    
+    batch = iter(data_loader)
+    obs, action, reward_inputs = next(batch)
+    reward_inputs_dict = reward_inputs.to_dict()
+    assert set(reward_inputs_dict.keys()) == sarm_keys
+    assert reward_inputs_dict['gap_data_0.observation.state'].shape == (2, *tuple(data_item['gap_data_0.observation.state'].shape))
+    
+@pytest.mark.parametrize("config_name", ["pi0_piper_debug_reward"])
+def test_train_policy_reward(config_name, tmp_path, monkeypatch):
     config = dataclasses.replace(
         _CONFIGS_DICT[config_name],  # noqa: SLF001
         batch_size=2,

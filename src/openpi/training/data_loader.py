@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 import torch
 from lerobot.datasets import lerobot_dataset
+from sarm.dataset.gap_dataset import GapLerobotDataset
 
 import openpi.models.model as _model
 import openpi.training.config as _config
@@ -134,21 +135,30 @@ def create_torch_dataset(
     repo_id = data_config.repo_id
     if repo_id is None:
         raise ValueError("Repo ID is not set. Cannot create dataset.")
-    if repo_id == "fake":
+    elif repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
-
-    dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
-    dataset = lerobot_dataset.LeRobotDataset(
-        data_config.repo_id,
-        delta_timestamps={
-            key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
-        },
-    )
-
-    if data_config.prompt_from_task:
-        task_id2name = {i: v for i, v in enumerate(dataset_meta.tasks.index)}
-        dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(task_id2name)])
-    return dataset
+    elif data_config.reward_model == 'sarm':
+        dataset = GapLerobotDataset(repo_id=repo_id,
+                                    action_horizon=action_horizon,
+                                    frame_gap=30, t_step_lookback=8)
+        if data_config.prompt_from_task:
+            dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+            task_id2name = {i: v for i, v in enumerate(dataset_meta.tasks.index)}
+            dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(task_id2name)])
+        return dataset
+    else:
+        dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+        dataset = lerobot_dataset.LeRobotDataset(
+            data_config.repo_id,
+            delta_timestamps={
+                key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
+            },
+        )
+    
+        if data_config.prompt_from_task:
+            task_id2name = {i: v for i, v in enumerate(dataset_meta.tasks.index)}
+            dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(task_id2name)])
+        return dataset
 
 
 def create_rlds_dataset(
@@ -281,7 +291,7 @@ def create_torch_data_loader(
     num_workers: int = 0,
     seed: int = 0,
     framework: str = "jax",
-) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
+) -> DataLoader[tuple[_model.Observation, _model.Actions, _model.RewardsInputs]]:
     """Create a data loader for training.
 
     Args:
@@ -537,4 +547,10 @@ class DataLoaderImpl(DataLoader):
 
     def __iter__(self):
         for batch in self._data_loader:
-            yield _model.Observation.from_dict(batch), batch["actions"]
+            obs = _model.Observation.from_dict(batch)
+            acts = batch["actions"]
+            rew = _model.RewardsInputs.from_dict(
+                data=batch,
+                reward_keys=self._data_config.reward_model_keys
+            )
+            yield obs, acts, rew

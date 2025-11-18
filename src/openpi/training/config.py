@@ -96,6 +96,10 @@ class DataConfig:
     action_space: droid_rlds_dataset.DroidActionSpace | None = None
     # Path to the data filter file for DROID dataset
     filter_dict_path: str | None = None
+    
+    #Sarm Reward 
+    reward_model: str | None = False
+    reward_model_keys: Sequence[str] = ()
 
 
 class GroupFactory(Protocol):
@@ -507,6 +511,71 @@ class LeRobotPiperDataConfig(DataConfigFactory):
         )
 
 @dataclasses.dataclass(frozen=True)
+class LeRobotPiperSarmDataConfig(DataConfigFactory):
+    action_sequence_keys: Sequence[str] = ("action",)
+    reward_model: str = 'sarm'
+    reward_model_keys  = (
+    'gap_data_0.observation.state',
+    'gap_data_0.observation.images.wrist1',
+    'gap_data_0.observation.images.wrist2',
+    'gap_data_0.observation.images.stereo',
+    'gap_data_1.observation.state',
+    'gap_data_1.observation.images.wrist1',
+    'gap_data_1.observation.images.wrist2',
+    'gap_data_1.observation.images.stereo',
+    )
+    
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Boilerplate for remapping keys from the LeRobot dataset. We assume no renaming needed here.
+        repack_transform = _transforms.Group(
+            inputs=[
+                
+                # TODO: Check wrist naming and rename under piper-server
+                _transforms.RepackTransform(
+                    {
+                        'wrist.right': 'observation.images.wrist1',
+                        'wrist.left': 'observation.images.wrist2',
+                        'stereo': 'observation.images.stereo',
+                        'state': 'observation.state',
+                        'actions': 'action',
+                        'prompt': 'prompt',
+                        **dict(zip(self.reward_model_keys, self.reward_model_keys))
+                     }
+
+                )
+            ]
+        )
+        # These transforms are the ones we wrote earlier.
+        data_transforms = _transforms.Group(
+            inputs=[piper_policy.PiperInputs( model_type=model_config.model_type)],
+            outputs=[piper_policy.PiperOutputs()],
+        )
+
+        # Convert absolute actions to delta actions.
+        # By convention, we do not convert the gripper action (7th dimension).
+        # TODO: Make sure grippers in position of state array [6] and [13]
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        # You do not need to change anything here for your own dataset.
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            reward_model=self.reward_model,
+            reward_model_keys=self.reward_model_keys
+        )
+
+@dataclasses.dataclass(frozen=True)
 class TrainConfig:
     # Name of the config. Must be unique. Will be used to reference this config.
     name: tyro.conf.Suppress[str]
@@ -577,6 +646,9 @@ class TrainConfig:
     # eg. if total device is 4 and fsdp devices is 2; then the model will shard to 2 devices and run
     # data parallel between 2 groups of devices.
     fsdp_devices: int = 1
+    
+    #Reward Model
+    reward_model: str | None = None
 
     @property
     def assets_dirs(self) -> pathlib.Path:
@@ -618,6 +690,24 @@ _CONFIGS = [
         ),
         num_train_steps=10,
         wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_piper_debug_reward",
+        model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
+        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
+        data=LeRobotPiperSarmDataConfig(
+            repo_id="ETHRC/piper_towel_v0",
+            assets=AssetsConfig(
+                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pi0_piper_debug"),
+                asset_id="ETHRC/piper_towel_v0",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        num_train_steps=10,
+        wandb_enabled=False,
+        reward_model='sarm_debug'
     ),
     TrainConfig(
         name="  ",
