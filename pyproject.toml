@@ -36,10 +36,11 @@ dependencies = [
     "transformers==4.53.2",
     "rich>=14.0.0",
     "polars>=1.30.0",
-    "lerobot==0.4.0",
+    "lerobot==0.4.2",
     "sarm",
     "piper-teleop",
     "tactile-teleop-python-sdk",
+    "yams-robot-server",
 ]
 
 
@@ -68,6 +69,7 @@ override-dependencies = [
     "tensorstore==0.1.74",
     "numpy<2.0.0",  # Force numpy<2 globally, even for packages that want numpy>=2
     "wandb==0.19.11",  # Force numpy<2 globally, even for packages that want numpy>=2
+    "lerobot==0.4.2",
 ]
 
 [tool.uv.sources]
@@ -76,6 +78,8 @@ dlimp = { git = "https://github.com/kvablack/dlimp", rev = "ad72ce3a9b414db2185b
 sarm = { git = "https://github.com/ETHRoboticsClub/sarm", branch = "feature/openpi_integration" }
 tactile-teleop-python-sdk = { git = "https://github.com/TactileRoboticsAI/tactile-teleop-python-sdk.git" }
 piper-teleop = { git = "https://github.com/ETHRoboticsClub/piper-robot-server.git", branch = "feature/lerobt_register_piper" }
+yams-robot-server = { git = "https://github.com/ETHRoboticsClub/yams-robot-server.git", branch = "pyezd-dep" }
+lerobot = { git = "https://github.com/huggingface/lerobot.git", rev = "cb920235c46172959c4163b7a7394012e9891af7" }
 
 [tool.uv.workspace]
 members = ["packages/*"]

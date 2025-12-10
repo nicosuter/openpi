@@ -4,8 +4,14 @@
         "editor.formatOnSave": true,
     },
     "python.testing.pytestArgs": [
-        "src"
+        "src",
+        "scripts"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "testing.coverageBarThresholds": {
+        "red": 0,
+        "yellow": 60,
+        "green": 90
+    }
 }

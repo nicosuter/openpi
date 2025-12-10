@@ -28,6 +28,7 @@ import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
+from openpi.policies import yam_policy
 
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
@@ -511,6 +512,58 @@ class LeRobotPiperDataConfig(DataConfigFactory):
         )
 
 @dataclasses.dataclass(frozen=True)
+class LeRobotYamDataConfig(DataConfigFactory):
+    
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Boilerplate for remapping keys from the LeRobot dataset. We assume no renaming needed here.
+        repack_transform = _transforms.Group(
+            inputs=[
+                
+                # TODO: Check wrist naming and rename under piper-server
+                _transforms.RepackTransform(
+                    {
+                        'wrist.right': 'observation.images.right_wrist',
+                        'wrist.left': 'observation.images.left_wrist',
+                        'stereo': 'observation.images.topdown',
+                        'state': 'observation.state',
+                        'actions': 'action',
+                        'prompt': 'prompt'
+                    }
+                )
+            ]
+        )
+        # These transforms are the ones we wrote earlier.
+        data_transforms = _transforms.Group(
+            inputs=[yam_policy.YamInputs( model_type=model_config.model_type)],
+            outputs=[yam_policy.YamOutputs()],
+        )
+
+        # Convert absolute actions to delta actions.
+        # By convention, we do not convert the gripper action (7th dimension).
+        # TODO: Make sure grippers in position of state array [6] and [13]
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        # You do not need to change anything here for your own dataset.
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+@dataclasses.dataclass(frozen=True)
 class LeRobotPiperSarmDataConfig(DataConfigFactory):
     action_sequence_keys: Sequence[str] = ("action",)
     reward_model: str = 'sarm'
@@ -692,6 +745,23 @@ _CONFIGS = [
         wandb_enabled=False,
     ),
     TrainConfig(
+        name="pi0_yam_debug",
+        model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
+        assets_base_dir=str(_normalize.NORM_STATS_PATH),
+        data=LeRobotYamDataConfig(
+            repo_id="ETHRC/towel_base",
+            assets=AssetsConfig(
+                assets_dir=str(_normalize.NORM_STATS_PATH / "pi0_yam_debug"),
+                asset_id="ETHRC/towel_base",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        num_train_steps=10,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
         name="pi0_piper_debug_reward",
         model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
         assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
@@ -730,6 +800,23 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter(),
         ema_decay=None,
+    ),
+    TrainConfig(
+        name="yam_towel_base_full_finetune",
+        model=pi0_config.Pi0Config(),
+        assets_base_dir=str(_normalize.NORM_STATS_PATH),
+        data=LeRobotYamDataConfig(
+            repo_id="ETHRC/towel_base",
+            assets=AssetsConfig(
+                assets_dir=str(_normalize.NORM_STATS_PATH ),
+                asset_id="ETHRC/towel_base",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        ema_decay=0.99,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
     ),
     #
     # Inference Aloha configs.
