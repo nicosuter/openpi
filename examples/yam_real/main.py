@@ -57,6 +57,7 @@ def main(args: Args) -> None:
         max_hz=30,
         num_episodes=args.num_episodes,
         max_episode_steps=args.max_episode_steps,
+        debug=True,
     )
 
     try:

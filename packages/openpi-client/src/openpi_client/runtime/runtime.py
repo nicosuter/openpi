@@ -19,6 +19,7 @@ class Runtime:
         max_hz: float = 0,
         num_episodes: int = 1,
         max_episode_steps: int = 0,
+        debug: bool = False
     ) -> None:
         self._environment = environment
         self._agent = agent
@@ -29,6 +30,8 @@ class Runtime:
 
         self._in_episode = False
         self._episode_steps = 0
+        
+        self.debug = debug
 
     def run(self) -> None:
         """Runs the runtime loop continuously until stop() is called or the environment is done."""
@@ -82,7 +85,7 @@ class Runtime:
         """A single step of the runtime loop."""
         observation = self._environment.get_observation()
         
-        if debug := False:
+        if self.debug:
             imgs = [img for img  in observation.values() if hasattr(img, "shape") and len(img.shape) == 3]
             min_height = min(img.shape[0] for img in imgs)
             imgs_resized = [cv2.resize(img, (int(img.shape[1] * min_height / img.shape[0]), min_height)) if img.shape[0] != min_height else img for img in imgs]
@@ -92,7 +95,7 @@ class Runtime:
 
         action = self._agent.get_action(observation)
 
-        if debug:
+        if self.debug:
             print(action["actions"] - observation["state"])
 
         self._environment.apply_action(action)
