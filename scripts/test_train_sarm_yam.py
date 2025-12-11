@@ -18,7 +18,8 @@ from sarm.model.reward_sarm import RewardSarm
 
 import openpi.models.pi0_config as pi0_config
 from openpi.shared.download import DEFAULT_CACHE_DIR
-from openpi.training.config import AssetsConfig, DataConfig, _CONFIGS_DICT,LeRobotYamDataConfig
+from openpi.training.config import AssetsConfig, DataConfig, _CONFIGS_DICT, LeRobotYamDataConfig, \
+    LeRobotYamSarmDataConfig
 from openpi.training.data_loader import create_torch_dataset, transform_dataset, create_torch_data_loader
 from openpi_client import image_tools
 from scripts import compute_norm_stats, train
@@ -172,7 +173,7 @@ def test_get_reward_data():
     assert set(reward_inputs_dict.keys()) == sarm_keys
     assert reward_inputs_dict['gap_data_0.observation.state'].shape == (2, *tuple(data_item['gap_data_0.observation.state'].shape))
     
-@pytest.mark.parametrize("config_name", ["pi0_piper_debug_reward"])
+@pytest.mark.parametrize("config_name", ["pi0_yam_debug_reward"])
 def test_train_policy_reward(config_name, tmp_path, monkeypatch):
     config = dataclasses.replace(
         _CONFIGS_DICT[config_name],  # noqa: SLF001

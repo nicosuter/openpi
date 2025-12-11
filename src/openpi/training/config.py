@@ -629,6 +629,71 @@ class LeRobotPiperSarmDataConfig(DataConfigFactory):
         )
 
 @dataclasses.dataclass(frozen=True)
+class LeRobotYamSarmDataConfig(DataConfigFactory):
+    action_sequence_keys: Sequence[str] = ("action",)
+    reward_model: str = 'sarm'
+    reward_model_keys  = (
+    'gap_data_0.observation.state',
+    'gap_data_0.observation.images.left_wrist',
+    'gap_data_0.observation.images.right_wrist',
+    'gap_data_0.observation.images.topdown',
+    'gap_data_1.observation.state',
+    'gap_data_1.observation.images.left_wrist',
+    'gap_data_1.observation.images.right_wrist',
+    'gap_data_1.observation.images.topdown',
+    )
+    
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Boilerplate for remapping keys from the LeRobot dataset. We assume no renaming needed here.
+        repack_transform = _transforms.Group(
+            inputs=[
+                
+                # TODO: Check wrist naming and rename under piper-server
+                _transforms.RepackTransform(
+                    {
+                        'wrist.right': 'observation.images.right_wrist',
+                        'wrist.left': 'observation.images.left_wrist',
+                        'stereo': 'observation.images.topdown',
+                        'state': 'observation.state',
+                        'actions': 'action',
+                        'prompt': 'prompt',
+                        **dict(zip(self.reward_model_keys, self.reward_model_keys))
+                     }
+
+                )
+            ]
+        )
+        # These transforms are the ones we wrote earlier.
+        data_transforms = _transforms.Group(
+            inputs=[yam_policy.YamInputs( model_type=model_config.model_type)],
+            outputs=[yam_policy.YamOutputs()],
+        )
+
+        # Convert absolute actions to delta actions.
+        # By convention, we do not convert the gripper action (7th dimension).
+        # TODO: Make sure grippers in position of state array [6] and [13]
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        # You do not need to change anything here for your own dataset.
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            reward_model=self.reward_model,
+            reward_model_keys=self.reward_model_keys
+        )
+
+@dataclasses.dataclass(frozen=True)
 class TrainConfig:
     # Name of the config. Must be unique. Will be used to reference this config.
     name: tyro.conf.Suppress[str]
@@ -770,6 +835,24 @@ _CONFIGS = [
             assets=AssetsConfig(
                 assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pi0_piper_debug"),
                 asset_id="ETHRC/piper_towel_v0",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        num_train_steps=10,
+        wandb_enabled=False,
+        reward_model='sarm_debug'
+    ),
+    TrainConfig(
+        name="pi0_yam_debug_reward",
+        model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
+        assets_base_dir=str(_normalize.NORM_STATS_PATH),
+        data=LeRobotYamSarmDataConfig(
+            repo_id='ETHRC/towel_base',
+            assets=AssetsConfig(
+                assets_dir=str(_normalize.NORM_STATS_PATH / "pi0_yam_debug"),
+                asset_id='ETHRC/towel_base',
             ),
             base_config=DataConfig(
                 prompt_from_task=True,
