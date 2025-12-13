@@ -1,6 +1,8 @@
 import einops
 import numpy as np
 from lerobot_robot_yams import BiYamsFollower, BiYamsFollowerConfig
+
+from examples.yam_sim.robot_sim import RobotYamSim
 from openpi_client import image_tools
 from openpi_client.runtime import environment as _environment
 from typing_extensions import override
@@ -13,7 +15,8 @@ class YamRealEnvironment(_environment.Environment):
         config: BiYamsFollowerConfig | None = None,
         render_height: int = 224,
         render_width: int = 224,
-        prompt='Fold the towel.'
+        prompt='Fold the towel.',
+        action_sim: bool = False,
     ) -> None:
         if config is None:
             config = BiYamsFollowerConfig()
@@ -23,6 +26,9 @@ class YamRealEnvironment(_environment.Environment):
         self._render_width = render_width
         self._connected = False
         self.prompt=prompt
+        self.action_sim = action_sim
+        if self.action_sim:
+            self._sim_robot = RobotYamSim()
 
     @override
     def reset(self) -> None:
@@ -78,8 +84,11 @@ class YamRealEnvironment(_environment.Environment):
         for i, name in enumerate(joint_names):
             action_dict[f"left_{name}.pos"] = float(action['actions_arm0'][i])
             action_dict[f"right_{name}.pos"] = float(action['actions_arm1'][i])
-
-        self._robot.send_action(action_dict)
+        
+        if self.action_sim:
+            self._sim_robot.apply_action(action['actions_arm0'])
+        else:
+            self._robot.send_action(action_dict)
 
     def disconnect(self) -> None:
         if self._connected:
