@@ -3,6 +3,7 @@ import pathlib
 import os
 
 from openpi.shared.normalize import NORM_STATS_PATH
+from scripts.train import load_reward_model
 
 os.environ["JAX_PLATFORMS"] = "cpu"
 
@@ -19,7 +20,7 @@ from sarm.model.reward_sarm import RewardSarm
 import openpi.models.pi0_config as pi0_config
 from openpi.shared.download import DEFAULT_CACHE_DIR
 from openpi.training.config import AssetsConfig, DataConfig, _CONFIGS_DICT, LeRobotYamDataConfig, \
-    LeRobotYamSarmDataConfig
+    LeRobotYamSarmDataConfig, SarmRewardConfig
 from openpi.training.data_loader import create_torch_dataset, transform_dataset, create_torch_data_loader
 from openpi_client import image_tools
 from scripts import compute_norm_stats, train
@@ -152,8 +153,10 @@ def test_get_reward_data():
     )
     sarm_keys = {'gap_data_0.observation.state', 'gap_data_0.observation.images.right_wrist',
                  'gap_data_0.observation.images.left_wrist', 'gap_data_0.observation.images.topdown',
+                 'gap_data_0.task', 'gap_data_0.lengths',
                  'gap_data_1.observation.state', 'gap_data_1.observation.images.right_wrist',
-                 'gap_data_1.observation.images.left_wrist', 'gap_data_1.observation.images.topdown'}
+                 'gap_data_1.observation.images.left_wrist', 'gap_data_1.observation.images.topdown',
+                 'gap_data_1.task', 'gap_data_1.lengths'}
     data_config = piper_config.create(assets_dirs=Path('/'), model_config=pi0_config.Pi0Config())
     lerobot_dataset = create_torch_dataset(data_config=data_config, action_horizon=action_horizon, model_config=None)
     dataset_transformed = transform_dataset(lerobot_dataset, data_config, skip_norm_stats=True)
@@ -172,9 +175,25 @@ def test_get_reward_data():
     reward_inputs_dict = reward_inputs.to_dict()
     assert set(reward_inputs_dict.keys()) == sarm_keys
     assert reward_inputs_dict['gap_data_0.observation.state'].shape == (2, *tuple(data_item['gap_data_0.observation.state'].shape))
-    
-@pytest.mark.parametrize("config_name", ["pi0_yam_debug_reward"])
-def test_train_policy_reward(config_name, tmp_path, monkeypatch):
+
+def test_load_sarm_reward_model():
+    """Test loading the real SARM reward model with custom config."""
+    @dataclasses.dataclass
+    class MockConfig:
+        reward_model: str = "sarm"
+        sarm_reward_config: SarmRewardConfig = dataclasses.field(default_factory=SarmRewardConfig)
+
+    config = MockConfig()
+    reward_model = load_reward_model(config)
+    assert reward_model is not None
+    assert isinstance(reward_model, RewardSarm)
+
+
+@pytest.mark.parametrize("config_name,reward_model", [
+    ("pi0_yam_debug_reward", "sarm_debug"),
+    ("pi0_yam_debug_reward", "sarm"),
+])
+def test_train_policy_reward(config_name, reward_model, tmp_path, monkeypatch):
     config = dataclasses.replace(
         _CONFIGS_DICT[config_name],  # noqa: SLF001
         batch_size=2,
@@ -184,6 +203,6 @@ def test_train_policy_reward(config_name, tmp_path, monkeypatch):
         num_train_steps=1,
         log_interval=1,
         checkpoint_base_dir=str(tmp_path / "checkpoint"),
-
+        reward_model=reward_model,
     )
     train.main(config)

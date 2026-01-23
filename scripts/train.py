@@ -16,6 +16,7 @@ import optax
 import tqdm_loggable.auto as tqdm
 import wandb
 from sarm.model.reward_sarm import RewardSarm
+from sarm.model.sarm import Sarm
 
 import openpi.models.model as _model
 import openpi.shared.array_typing as at
@@ -27,7 +28,7 @@ import openpi.training.optimizer as _optimizer
 import openpi.training.sharding as sharding
 import openpi.training.utils as training_utils
 import openpi.training.weight_loaders as _weight_loaders
-
+from sarm.config.sarm_config import SarmConfig, GeneralConfig, ModelConfig
 
 def init_logging():
     """Custom logging format for better readability."""
@@ -161,7 +162,8 @@ def load_reward_model(config: _config.TrainConfig):
     if not config.reward_model:
         class RewardNoModel:
             def __call__(self, *args, **kwargs):
-                return None
+                # Return dummy weights (not used by loss_fn when reward_model is None)
+                return jnp.ones(config.batch_size, dtype=jnp.float32)
         return RewardNoModel()
     elif config.reward_model == "sarm_debug":
         logging.info(f"loading reward model {config.reward_model}")
@@ -177,8 +179,23 @@ def load_reward_model(config: _config.TrainConfig):
         reward_model = RewardSarm(sarm=sarm_mock)
         return reward_model
     elif config.reward_model == "sarm":
-        logging.info(f"loading reward model {config.reward_model}")
-        raise Exception('Needs implementation')
+        sarm_cfg = config.sarm_reward_config
+        sarm_config = SarmConfig(
+            general_config=GeneralConfig(
+                state_norm_path=sarm_cfg.state_norm_path,
+                camera_names=list(sarm_cfg.camera_names),
+            ),
+            model_config=ModelConfig(
+                state_dim=sarm_cfg.state_dim,
+                clip_weights_path=sarm_cfg.clip_weights_path,
+                stage_checkpoint_path=sarm_cfg.stage_checkpoint_path,
+                progress_checkpoint_path=sarm_cfg.progress_checkpoint_path,
+            ),
+        )
+        logging.info(f"Loading SARM reward model with config: {sarm_cfg}")
+        sarm = Sarm.load_sarm_checkpoint_from_config(sarm_config)
+        reward_model = RewardSarm(sarm=sarm)
+        return reward_model
     else:
         raise ValueError(f"Unknown reward model: {config.reward_model}")
 
@@ -188,18 +205,19 @@ def train_step(
     config: _config.TrainConfig,
     rng: at.KeyArrayLike,
     state: training_utils.TrainState,
-    batch: tuple[_model.Observation, _model.Actions, _model.RewardsInputs],
-    reward_model,
+    batch: tuple[_model.Observation, _model.Actions],
+    reward_weights: jnp.ndarray,
 ) -> tuple[training_utils.TrainState, dict[str, at.Array]]:
     model = nnx.merge(state.model_def, state.params)
     model.train()
-    
+
     loss_fn = get_loss_fn(config)
 
     train_rng = jax.random.fold_in(rng, state.step)
-    observation, actions, reward_inputs = batch
-    
-    reward_weights = jax.lax.stop_gradient(reward_model(reward_inputs.to_dict()))
+    observation, actions = batch
+
+    # reward_weights are pre-computed outside JIT (allows non-JAX reward models)
+    reward_weights = jax.lax.stop_gradient(reward_weights)
 
     # Filter out frozen params.
     diff_state = nnx.DiffState(0, config.trainable_filter)
@@ -290,9 +308,10 @@ def main(config: _config.TrainConfig):
     if resuming:
         train_state = _checkpoints.restore_state(checkpoint_manager, train_state, data_loader)
 
+    # JIT-compiled train step - reward_weights computed outside
     ptrain_step = jax.jit(
-        functools.partial(train_step, config, reward_model=reward_model),
-        in_shardings=(replicated_sharding, train_state_sharding, data_sharding),
+        functools.partial(train_step, config),
+        in_shardings=(replicated_sharding, train_state_sharding, data_sharding, data_sharding),
         out_shardings=(train_state_sharding, replicated_sharding),
         donate_argnums=(1,),
     )
@@ -307,8 +326,13 @@ def main(config: _config.TrainConfig):
 
     infos = []
     for step in pbar:
+        # Unpack batch and compute reward weights outside JIT
+        # This allows reward models that use NumPy/PyTorch internally
+        observation, actions, reward_inputs = batch
+        reward_weights = jnp.asarray(reward_model(reward_inputs.to_dict()))
+        print(reward_weights)
         with sharding.set_mesh(mesh):
-            train_state, info = ptrain_step(train_rng, train_state, batch)
+            train_state, info = ptrain_step(train_rng, train_state, (observation, actions), reward_weights)
         infos.append(info)
         if step % config.log_interval == 0:
             stacked_infos = common_utils.stack_forest(infos)

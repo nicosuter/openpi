@@ -36,6 +36,35 @@ Filter: TypeAlias = nnx.filterlib.Filter
 
 
 @dataclasses.dataclass(frozen=True)
+class SarmRewardConfig:
+    """Configuration for SARM reward model used during training.
+
+    These parameters are passed to SarmConfig when loading the reward model.
+    Different robots may require different checkpoints and normalization stats.
+    """
+
+    # Path to normalization stats JSON for the reward model
+    state_norm_path: str = "data/towel_base_with_rewards.json"
+
+    # Path to stage transformer checkpoint
+    stage_checkpoint_path: str = "checkpoints/stg_t-2026.01.23-02.41.26-s-5000-b48.eqx"
+
+    # Path to progress transformer checkpoint
+    progress_checkpoint_path: str = "checkpoints/prg_t-2026.01.23-02.41.26-s-5000-b48.eqx"
+
+    # Path to CLIP model weights
+    clip_weights_path: str = "checkpoints/clip_vit_b32_openai.npz"
+
+    # Dimension of the robot state vector
+    state_dim: int = 14
+
+    # Camera names used by the reward model
+    camera_names: tuple[str, ...] = (
+        "observation.images.topdown",
+    )
+
+
+@dataclasses.dataclass(frozen=True)
 class AssetsConfig:
     """Determines the location of assets (e.g., norm stats) that will be used to set up the data pipeline.
 
@@ -572,10 +601,14 @@ class LeRobotPiperSarmDataConfig(DataConfigFactory):
     'gap_data_0.observation.images.wrist1',
     'gap_data_0.observation.images.wrist2',
     'gap_data_0.observation.images.stereo',
+    'gap_data_0.task',
+    'gap_data_0.lengths',
     'gap_data_1.observation.state',
     'gap_data_1.observation.images.wrist1',
     'gap_data_1.observation.images.wrist2',
     'gap_data_1.observation.images.stereo',
+    'gap_data_1.task',
+    'gap_data_1.lengths',
     )
     
     @override
@@ -637,10 +670,14 @@ class LeRobotYamSarmDataConfig(DataConfigFactory):
     'gap_data_0.observation.images.left_wrist',
     'gap_data_0.observation.images.right_wrist',
     'gap_data_0.observation.images.topdown',
+    'gap_data_0.task',
+    'gap_data_0.lengths',
     'gap_data_1.observation.state',
     'gap_data_1.observation.images.left_wrist',
     'gap_data_1.observation.images.right_wrist',
     'gap_data_1.observation.images.topdown',
+    'gap_data_1.task',
+    'gap_data_1.lengths',
     )
     
     @override
@@ -765,8 +802,10 @@ class TrainConfig:
     # data parallel between 2 groups of devices.
     fsdp_devices: int = 1
     
-    #Reward Model
+    # Reward Model
     reward_model: str | None = None
+    # Configuration for SARM reward model (used when reward_model is 'sarm')
+    sarm_reward_config: SarmRewardConfig = dataclasses.field(default_factory=SarmRewardConfig)
 
     @property
     def assets_dirs(self) -> pathlib.Path:

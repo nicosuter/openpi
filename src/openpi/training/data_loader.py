@@ -479,7 +479,14 @@ class TorchDataLoader:
                 num_items += 1
                 # For JAX, convert to sharded arrays; for PyTorch, return torch tensors
                 if self._sharding is not None:
-                    yield jax.tree.map(lambda x: jax.make_array_from_process_local_data(self._sharding, x), batch)
+                    def _maybe_device_put(x):
+                        if isinstance(x, np.ndarray) and x.dtype.kind in {"U", "S", "O"}:
+                            return x
+                        if isinstance(x, (list, tuple)) and x and isinstance(x[0], str):
+                            return x
+                        return jax.make_array_from_process_local_data(self._sharding, x)
+
+                    yield jax.tree.map(_maybe_device_put, batch)
                 else:
                     yield jax.tree.map(torch.as_tensor, batch)
 
@@ -547,16 +554,29 @@ class DataLoaderImpl(DataLoader):
     def __init__(self, data_config: _config.DataConfig, data_loader: TorchDataLoader | RLDSDataLoader):
         self._data_config = data_config
         self._data_loader = data_loader
+        # Get sharding from underlying data loader for JAX conversion
+        self._sharding = getattr(data_loader, "_sharding", None)
 
     def data_config(self) -> _config.DataConfig:
         return self._data_config
 
     def __iter__(self):
         for batch in self._data_loader:
+            # Create structured objects from numpy batch
             obs = _model.Observation.from_dict(batch)
             acts = batch["actions"]
             rew = _model.RewardsInputs.from_dict(
                 data=batch,
                 reward_keys=self._data_config.reward_model_keys
             )
+
+            # Convert Observation and Actions to JAX arrays, keep RewardsInputs as numpy
+            # This allows SARM (which uses numpy/torch) to work with RewardsInputs
+            if self._sharding is not None:
+                obs = jax.tree.map(
+                    lambda x: jax.make_array_from_process_local_data(self._sharding, x),
+                    obs
+                )
+                acts = jax.make_array_from_process_local_data(self._sharding, acts)
+
             yield obs, acts, rew

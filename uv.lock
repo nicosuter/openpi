@@ -16,7 +16,7 @@ members = [
     "openpi-client",
 ]
 overrides = [
-    { name = "lerobot", git = "https://github.com/huggingface/lerobot.git?rev=cb920235c46172959c4163b7a7394012e9891af7" },
+    { name = "lerobot", specifier = "==0.4.2" },
     { name = "ml-dtypes", specifier = "==0.4.1" },
     { name = "numpy", specifier = "<2.0.0" },
     { name = "tensorstore", specifier = "==0.1.74" },
@@ -947,6 +947,17 @@ wheels = [
 ]
 
 [[package]]
+name = "dotenv"
+version = "0.9.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dotenv" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/b7/545d2c10c1fc15e48653c91efde329a790f2eecfbbf2bd16003b5db2bab0/dotenv-0.9.9-py2.py3-none-any.whl", hash = "sha256:29cf74a087b31dafdb5a446b6d7e11cbce8ed2741540e2339c69fbef92c94ce9", size = 1892, upload-time = "2025-02-19T22:15:01.647Z" },
+]
+
+[[package]]
 name = "draccus"
 version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1276,6 +1287,18 @@ gcs = [
 ]
 http = [
     { name = "aiohttp" },
+]
+
+[[package]]
+name = "ftfy"
+version = "6.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "wcwidth" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a5/d3/8650919bc3c7c6e90ee3fa7fd618bf373cbbe55dff043bd67353dbb20cd8/ftfy-6.3.1.tar.gz", hash = "sha256:9b3c3d90f84fb267fe64d375a07b7f8912d817cf86009ae134aa03e1819506ec", size = 308927, upload-time = "2024-10-26T00:50:35.149Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/6e/81d47999aebc1b155f81eca4477a616a70f238a2549848c38983f3c22a82/ftfy-6.3.1-py3-none-any.whl", hash = "sha256:7c70eb532015cd2f9adb53f101fb6c7945988d023a085d127d1573dc49dd0083", size = 44821, upload-time = "2024-10-26T00:50:33.425Z" },
 ]
 
 [[package]]
@@ -2193,8 +2216,8 @@ wheels = [
 
 [[package]]
 name = "lerobot"
-version = "0.4.3"
-source = { git = "https://github.com/huggingface/lerobot.git?rev=cb920235c46172959c4163b7a7394012e9891af7#cb920235c46172959c4163b7a7394012e9891af7" }
+version = "0.4.2"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "accelerate" },
     { name = "av" },
@@ -2219,6 +2242,10 @@ dependencies = [
     { name = "torchcodec", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'armv7l' and sys_platform == 'linux') or (platform_machine != 'x86_64' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')" },
     { name = "torchvision" },
     { name = "wandb" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dd/6b/f80861cb1dbc908a45a7c96bdd88cf77de1e259f3b5a183ff859cca71fe7/lerobot-0.4.2.tar.gz", hash = "sha256:9fe72d9f2ad26438c03277f90b13efef126dd680ac082d112f9eef804be78101", size = 576787, upload-time = "2025-11-27T21:42:53.349Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d5/58/f5f9d6c0451df3e5cf9c484b1eb6a3abb93016677630a615b925c9da189a/lerobot-0.4.2-py3-none-any.whl", hash = "sha256:af4e5c709522c8022703e10431c14ae65b2e967e7ab608f51a07c03c38cefe04", size = 758780, upload-time = "2025-11-27T21:42:51.687Z" },
 ]
 
 [[package]]
@@ -3206,6 +3233,7 @@ dependencies = [
     { name = "flatbuffers" },
     { name = "flax" },
     { name = "fsspec", extra = ["gcs"] },
+    { name = "ftfy" },
     { name = "gym-aloha" },
     { name = "imageio" },
     { name = "jax", extra = ["cuda12"] },
@@ -3262,11 +3290,12 @@ requires-dist = [
     { name = "flatbuffers", specifier = ">=24.3.25" },
     { name = "flax", specifier = "==0.10.2" },
     { name = "fsspec", extras = ["gcs"], specifier = ">=2024.6.0" },
+    { name = "ftfy", specifier = ">=6.3.1" },
     { name = "gym-aloha", specifier = ">=0.1.1" },
     { name = "imageio", specifier = ">=2.36.1" },
     { name = "jax", extras = ["cuda12"], specifier = "==0.5.3" },
     { name = "jaxtyping", specifier = "==0.2.36" },
-    { name = "lerobot", git = "https://github.com/huggingface/lerobot.git?rev=cb920235c46172959c4163b7a7394012e9891af7" },
+    { name = "lerobot", specifier = "==0.4.2" },
     { name = "ml-collections", specifier = "==1.0.0" },
     { name = "numpy", specifier = ">=1.22.4,<2.0.0" },
     { name = "numpydantic", specifier = ">=1.6.6" },
@@ -4728,11 +4757,13 @@ wheels = [
 [[package]]
 name = "sarm"
 version = "0.1.0"
-source = { git = "https://github.com/ETHRoboticsClub/sarm?branch=feature%2Fopenpi_integration#6bcd681ba34a67eca1de9d24855941993ee5614b" }
+source = { git = "https://github.com/ETHRoboticsClub/sarm?branch=feature%2Fopenpi_integration#4706df0166e0485365bf76b5ea5eccd4baa097ba" }
 dependencies = [
+    { name = "dotenv" },
     { name = "einops" },
     { name = "equinox" },
     { name = "faker" },
+    { name = "ftfy" },
     { name = "jax", extra = ["cuda12"] },
     { name = "lerobot" },
     { name = "opencv-contrib-python" },

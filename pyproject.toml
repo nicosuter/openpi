@@ -42,6 +42,7 @@ dependencies = [
     "piper-teleop",
     "tactile-teleop-python-sdk",
     "yams-robot-server",
+    "ftfy>=6.3.1",
 ]
 
 
@@ -80,7 +81,6 @@ sarm = { git = "https://github.com/ETHRoboticsClub/sarm", branch = "feature/open
 tactile-teleop-python-sdk = { git = "https://github.com/TactileRoboticsAI/tactile-teleop-python-sdk.git" }
 piper-teleop = { git = "https://github.com/ETHRoboticsClub/piper-robot-server.git", branch = "feature/lerobt_register_piper" }
 yams-robot-server = { git = "https://github.com/ETHRoboticsClub/yams-robot-server.git", branch = "pyezd-dep" }
-lerobot = { git = "https://github.com/huggingface/lerobot.git", rev = "cb920235c46172959c4163b7a7394012e9891af7" }
 
 [tool.uv.workspace]
 members = ["packages/*"]
