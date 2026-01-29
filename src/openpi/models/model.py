@@ -140,6 +140,21 @@ class Observation(Generic[ArrayT]):
 # produced by the data transforms.
 Actions = at.Float[ArrayT, "*b ah ad"]
 
+@at.typecheck
+@struct.dataclass
+class RewardsInputs(Generic[ArrayT]):
+    inputs: dict[str, ArrayT]
+    
+    @classmethod
+    def from_dict(cls, data: at.PyTree[ArrayT], reward_keys: Sequence[str]) -> "RewardsInputs[ArrayT]":
+        inputs = {key: data[key] for key in reward_keys if key in data}
+        return cls(
+            inputs=inputs,
+        )
+
+    def to_dict(self) -> at.PyTree[ArrayT]:
+        return self.inputs
+
 
 def preprocess_observation(
     rng: at.KeyArrayLike | None,

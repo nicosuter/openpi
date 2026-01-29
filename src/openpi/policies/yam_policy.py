@@ -16,9 +16,9 @@ def _parse_image(img):
 
 
 @dataclasses.dataclass(frozen=True)
-class PiperInputs(transforms.DataTransformFn):
+class YamInputs(transforms.DataTransformFn):
     """
-    Universal adapter for ETHRC Piper datasets.
+    Universal adapter for ETHRC Yam datasets.
     Just flip `two_arms=True` to enable both wrists and 14-DoF actions.
     """
 
@@ -98,7 +98,7 @@ class PiperInputs(transforms.DataTransformFn):
 
 
 @dataclasses.dataclass(frozen=True)
-class PiperOutputs(transforms.DataTransformFn):
+class YamOutputs(transforms.DataTransformFn):
     two_arms: bool = True
     dof_per_arm: int = 7
     shared_dof: int = 0

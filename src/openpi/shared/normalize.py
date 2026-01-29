@@ -5,6 +5,8 @@ import numpy as np
 import numpydantic
 import pydantic
 
+NORM_STATS_PATH = pathlib.Path(__file__).parents[3] / 'norm_stats'
+
 
 @pydantic.dataclasses.dataclass
 class NormStats:

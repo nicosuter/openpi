@@ -20,6 +20,7 @@ import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.piper_policy as piper_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -27,10 +28,40 @@ import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
+from openpi.policies import yam_policy
 
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
 Filter: TypeAlias = nnx.filterlib.Filter
+
+
+@dataclasses.dataclass(frozen=True)
+class SarmRewardConfig:
+    """Configuration for SARM reward model used during training.
+
+    These parameters are passed to SarmConfig when loading the reward model.
+    Different robots may require different checkpoints and normalization stats.
+    """
+
+    # Path to normalization stats JSON for the reward model
+    state_norm_path: str = "data/towel_base_with_rewards.json"
+
+    # Path to stage transformer checkpoint
+    stage_checkpoint_path: str = "checkpoints/stg_t-2026.01.23-02.41.26-s-5000-b48.eqx"
+
+    # Path to progress transformer checkpoint
+    progress_checkpoint_path: str = "checkpoints/prg_t-2026.01.23-02.41.26-s-5000-b48.eqx"
+
+    # Path to CLIP model weights
+    clip_weights_path: str = "checkpoints/clip_vit_b32_openai.npz"
+
+    # Dimension of the robot state vector
+    state_dim: int = 14
+
+    # Camera names used by the reward model
+    camera_names: tuple[str, ...] = (
+        "observation.images.topdown",
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -95,6 +126,10 @@ class DataConfig:
     action_space: droid_rlds_dataset.DroidActionSpace | None = None
     # Path to the data filter file for DROID dataset
     filter_dict_path: str | None = None
+    
+    #Sarm Reward 
+    reward_model: str | None = False
+    reward_model_keys: Sequence[str] = ()
 
 
 class GroupFactory(Protocol):
@@ -454,6 +489,248 @@ class LeRobotDROIDDataConfig(DataConfigFactory):
 
 
 @dataclasses.dataclass(frozen=True)
+class LeRobotPiperDataConfig(DataConfigFactory):
+    
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Boilerplate for remapping keys from the LeRobot dataset. We assume no renaming needed here.
+        repack_transform = _transforms.Group(
+            inputs=[
+                
+                # TODO: Check wrist naming and rename under piper-server
+                _transforms.RepackTransform(
+                    {
+                        'wrist.right': 'observation.images.wrist1',
+                        'wrist.left': 'observation.images.wrist2',
+                        'stereo': 'observation.images.stereo',
+                        'state': 'observation.state',
+                        'actions': 'action',
+                        'prompt': 'prompt'
+                    }
+                )
+            ]
+        )
+        # These transforms are the ones we wrote earlier.
+        data_transforms = _transforms.Group(
+            inputs=[piper_policy.PiperInputs( model_type=model_config.model_type)],
+            outputs=[piper_policy.PiperOutputs()],
+        )
+
+        # Convert absolute actions to delta actions.
+        # By convention, we do not convert the gripper action (7th dimension).
+        # TODO: Make sure grippers in position of state array [6] and [13]
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        # You do not need to change anything here for your own dataset.
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotYamDataConfig(DataConfigFactory):
+    
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Boilerplate for remapping keys from the LeRobot dataset. We assume no renaming needed here.
+        repack_transform = _transforms.Group(
+            inputs=[
+                
+                # TODO: Check wrist naming and rename under piper-server
+                _transforms.RepackTransform(
+                    {
+                        'wrist.right': 'observation.images.right_wrist',
+                        'wrist.left': 'observation.images.left_wrist',
+                        'stereo': 'observation.images.topdown',
+                        'state': 'observation.state',
+                        'actions': 'action',
+                        'prompt': 'prompt'
+                    }
+                )
+            ]
+        )
+        # These transforms are the ones we wrote earlier.
+        data_transforms = _transforms.Group(
+            inputs=[yam_policy.YamInputs( model_type=model_config.model_type)],
+            outputs=[yam_policy.YamOutputs()],
+        )
+
+        # Convert absolute actions to delta actions.
+        # By convention, we do not convert the gripper action (7th dimension).
+        # TODO: Make sure grippers in position of state array [6] and [13]
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        # You do not need to change anything here for your own dataset.
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotPiperSarmDataConfig(DataConfigFactory):
+    action_sequence_keys: Sequence[str] = ("action",)
+    reward_model: str = 'sarm'
+    reward_model_keys  = (
+    'gap_data_0.observation.state',
+    'gap_data_0.observation.images.wrist1',
+    'gap_data_0.observation.images.wrist2',
+    'gap_data_0.observation.images.stereo',
+    'gap_data_0.task',
+    'gap_data_0.lengths',
+    'gap_data_1.observation.state',
+    'gap_data_1.observation.images.wrist1',
+    'gap_data_1.observation.images.wrist2',
+    'gap_data_1.observation.images.stereo',
+    'gap_data_1.task',
+    'gap_data_1.lengths',
+    )
+    
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Boilerplate for remapping keys from the LeRobot dataset. We assume no renaming needed here.
+        repack_transform = _transforms.Group(
+            inputs=[
+                
+                # TODO: Check wrist naming and rename under piper-server
+                _transforms.RepackTransform(
+                    {
+                        'wrist.right': 'observation.images.wrist1',
+                        'wrist.left': 'observation.images.wrist2',
+                        'stereo': 'observation.images.stereo',
+                        'state': 'observation.state',
+                        'actions': 'action',
+                        'prompt': 'prompt',
+                        **dict(zip(self.reward_model_keys, self.reward_model_keys))
+                     }
+
+                )
+            ]
+        )
+        # These transforms are the ones we wrote earlier.
+        data_transforms = _transforms.Group(
+            inputs=[piper_policy.PiperInputs( model_type=model_config.model_type)],
+            outputs=[piper_policy.PiperOutputs()],
+        )
+
+        # Convert absolute actions to delta actions.
+        # By convention, we do not convert the gripper action (7th dimension).
+        # TODO: Make sure grippers in position of state array [6] and [13]
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        # You do not need to change anything here for your own dataset.
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            reward_model=self.reward_model,
+            reward_model_keys=self.reward_model_keys
+        )
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotYamSarmDataConfig(DataConfigFactory):
+    action_sequence_keys: Sequence[str] = ("action",)
+    reward_model: str = 'sarm'
+    reward_model_keys  = (
+    'gap_data_0.observation.state',
+    'gap_data_0.observation.images.left_wrist',
+    'gap_data_0.observation.images.right_wrist',
+    'gap_data_0.observation.images.topdown',
+    'gap_data_0.task',
+    'gap_data_0.lengths',
+    'gap_data_1.observation.state',
+    'gap_data_1.observation.images.left_wrist',
+    'gap_data_1.observation.images.right_wrist',
+    'gap_data_1.observation.images.topdown',
+    'gap_data_1.task',
+    'gap_data_1.lengths',
+    )
+    
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Boilerplate for remapping keys from the LeRobot dataset. We assume no renaming needed here.
+        repack_transform = _transforms.Group(
+            inputs=[
+                
+                # TODO: Check wrist naming and rename under piper-server
+                _transforms.RepackTransform(
+                    {
+                        'wrist.right': 'observation.images.right_wrist',
+                        'wrist.left': 'observation.images.left_wrist',
+                        'stereo': 'observation.images.topdown',
+                        'state': 'observation.state',
+                        'actions': 'action',
+                        'prompt': 'prompt',
+                        **dict(zip(self.reward_model_keys, self.reward_model_keys))
+                     }
+
+                )
+            ]
+        )
+        # These transforms are the ones we wrote earlier.
+        data_transforms = _transforms.Group(
+            inputs=[yam_policy.YamInputs( model_type=model_config.model_type)],
+            outputs=[yam_policy.YamOutputs()],
+        )
+
+        # Convert absolute actions to delta actions.
+        # By convention, we do not convert the gripper action (7th dimension).
+        # TODO: Make sure grippers in position of state array [6] and [13]
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        # You do not need to change anything here for your own dataset.
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            reward_model=self.reward_model,
+            reward_model_keys=self.reward_model_keys
+        )
+
+@dataclasses.dataclass(frozen=True)
 class TrainConfig:
     # Name of the config. Must be unique. Will be used to reference this config.
     name: tyro.conf.Suppress[str]
@@ -524,6 +801,11 @@ class TrainConfig:
     # eg. if total device is 4 and fsdp devices is 2; then the model will shard to 2 devices and run
     # data parallel between 2 groups of devices.
     fsdp_devices: int = 1
+    
+    # Reward Model
+    reward_model: str | None = None
+    # Configuration for SARM reward model (used when reward_model is 'sarm')
+    sarm_reward_config: SarmRewardConfig = dataclasses.field(default_factory=SarmRewardConfig)
 
     @property
     def assets_dirs(self) -> pathlib.Path:
@@ -549,6 +831,115 @@ class TrainConfig:
 
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
+    TrainConfig(
+        name="pi0_piper_debug",
+        model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
+        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
+        data=LeRobotPiperDataConfig(
+            repo_id="ETHRC/piper_towel_v0",
+            assets=AssetsConfig(
+                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pi0_piper_debug"),
+                asset_id="ETHRC/piper_towel_v0",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        num_train_steps=10,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_yam_debug",
+        model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
+        assets_base_dir=str(_normalize.NORM_STATS_PATH),
+        data=LeRobotYamDataConfig(
+            repo_id="ETHRC/towel_base",
+            assets=AssetsConfig(
+                assets_dir=str(_normalize.NORM_STATS_PATH / "pi0_yam_debug"),
+                asset_id="ETHRC/towel_base",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        num_train_steps=10,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_piper_debug_reward",
+        model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
+        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
+        data=LeRobotPiperSarmDataConfig(
+            repo_id="ETHRC/piper_towel_v0",
+            assets=AssetsConfig(
+                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / "pi0_piper_debug"),
+                asset_id="ETHRC/piper_towel_v0",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        num_train_steps=10,
+        wandb_enabled=False,
+        reward_model='sarm_debug'
+    ),
+    TrainConfig(
+        name="pi0_yam_debug_reward",
+        model=pi0_config.Pi0Config(paligemma_variant="dummy", action_expert_variant="dummy"),
+        assets_base_dir=str(_normalize.NORM_STATS_PATH),
+        data=LeRobotYamSarmDataConfig(
+            repo_id='ETHRC/towel_base',
+            assets=AssetsConfig(
+                assets_dir=str(_normalize.NORM_STATS_PATH / "pi0_yam_debug"),
+                asset_id='ETHRC/towel_base',
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        num_train_steps=10,
+        wandb_enabled=False,
+        reward_model='sarm_debug'
+    ),
+    TrainConfig(
+        name="  ",
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
+        assets_base_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser()),
+        data=LeRobotPiperDataConfig(
+            repo_id="ETHRC/pick_and_place_v2",
+            assets=AssetsConfig(
+                assets_dir=str(pathlib.Path(_download.DEFAULT_CACHE_DIR).expanduser() / 'pick_and_place_v2_lora' ),
+                asset_id="ETHRC/pick_and_place_v2",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
+        num_train_steps=30_000,
+        wandb_enabled=True,
+        freeze_filter=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter(),
+        ema_decay=None,
+    ),
+    TrainConfig(
+        name="yam_towel_base_full_finetune",
+        model=pi0_config.Pi0Config(),
+        assets_base_dir=str(_normalize.NORM_STATS_PATH),
+        data=LeRobotYamDataConfig(
+            repo_id="ETHRC/towel_base",
+            assets=AssetsConfig(
+                assets_dir=str(_normalize.NORM_STATS_PATH ),
+                asset_id="ETHRC/towel_base",
+            ),
+            base_config=DataConfig(
+                prompt_from_task=True,
+            ),
+        ),
+        ema_decay=0.99,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
+    ),
     #
     # Inference Aloha configs.
     #

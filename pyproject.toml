@@ -17,10 +17,10 @@ dependencies = [
     "imageio>=2.36.1",
     "jax[cuda12]==0.5.3",
     "jaxtyping==0.2.36",
-    "lerobot",
     "ml_collections==1.0.0",
     "numpy>=1.22.4,<2.0.0",
     "numpydantic>=1.6.6",
+    "opencv-contrib-python>=4.10.0.84",
     "opencv-python>=4.10.0.84",
     "openpi-client",
     "orbax-checkpoint==0.11.13",
@@ -37,6 +37,12 @@ dependencies = [
     "transformers==4.53.2",
     "rich>=14.0.0",
     "polars>=1.30.0",
+    "lerobot==0.4.2",
+    "sarm",
+    "piper-teleop",
+    "tactile-teleop-python-sdk",
+    "yams-robot-server",
+    "ftfy>=6.3.1",
 ]
 
 
@@ -60,12 +66,21 @@ rlds = [
 ]
 
 [tool.uv]
-override-dependencies = ["ml-dtypes==0.4.1", "tensorstore==0.1.74"]
+override-dependencies = [
+    "ml-dtypes==0.4.1",
+    "tensorstore==0.1.74",
+    "numpy<2.0.0",  # Force numpy<2 globally, even for packages that want numpy>=2
+    "wandb==0.19.11",  # Force numpy<2 globally, even for packages that want numpy>=2
+    "lerobot==0.4.2",
+]
 
 [tool.uv.sources]
 openpi-client = { workspace = true }
-lerobot = { git = "https://github.com/huggingface/lerobot", rev = "0cf864870cf29f4738d3ade893e6fd13fbd7cdb5" }
 dlimp = { git = "https://github.com/kvablack/dlimp", rev = "ad72ce3a9b414db2185bc0b38461d4101a65477a" }
+sarm = { git = "https://github.com/ETHRoboticsClub/sarm", branch = "feature/openpi_integration" }
+tactile-teleop-python-sdk = { git = "https://github.com/TactileRoboticsAI/tactile-teleop-python-sdk.git" }
+piper-teleop = { git = "https://github.com/ETHRoboticsClub/piper-robot-server.git", branch = "feature/lerobt_register_piper" }
+yams-robot-server = { git = "https://github.com/ETHRoboticsClub/yams-robot-server.git", branch = "pyezd-dep" }
 
 [tool.uv.workspace]
 members = ["packages/*"]

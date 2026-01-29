@@ -7,9 +7,10 @@ from typing import Literal, Protocol, SupportsIndex, TypeVar
 
 import jax
 import jax.numpy as jnp
-import lerobot.common.datasets.lerobot_dataset as lerobot_dataset
 import numpy as np
 import torch
+from lerobot.datasets import lerobot_dataset
+from sarm.dataset.gap_dataset import GapLerobotDataset
 
 import openpi.models.model as _model
 import openpi.training.config as _config
@@ -132,23 +133,38 @@ def create_torch_dataset(
 ) -> Dataset:
     """Create a dataset for training."""
     repo_id = data_config.repo_id
+    if repo_id =='ETHRC/towel_base':
+        episodes = [n for n in range(315) if n not in {129, 256}]
+    else:
+        episodes = None
+        
     if repo_id is None:
         raise ValueError("Repo ID is not set. Cannot create dataset.")
-    if repo_id == "fake":
+    elif repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
-
-    dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
-    dataset = lerobot_dataset.LeRobotDataset(
-        data_config.repo_id,
-        delta_timestamps={
-            key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
-        },
-    )
-
-    if data_config.prompt_from_task:
-        dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
-
-    return dataset
+    elif data_config.reward_model == 'sarm':
+        dataset = GapLerobotDataset(repo_id=repo_id,
+                                    action_horizon=action_horizon,
+                                    frame_gap=30, t_step_lookback=8)
+        if data_config.prompt_from_task:
+            dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+            task_id2name = {i: v for i, v in enumerate(dataset_meta.tasks.index)}
+            dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(task_id2name)])
+        return dataset
+    else:
+        dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+        dataset = lerobot_dataset.LeRobotDataset(
+            data_config.repo_id,
+            episodes=episodes,
+            delta_timestamps={
+                key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
+            },
+        )
+    
+        if data_config.prompt_from_task:
+            task_id2name = {i: v for i, v in enumerate(dataset_meta.tasks.index)}
+            dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(task_id2name)])
+        return dataset
 
 
 def create_rlds_dataset(
@@ -281,7 +297,7 @@ def create_torch_data_loader(
     num_workers: int = 0,
     seed: int = 0,
     framework: str = "jax",
-) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
+) -> DataLoader[tuple[_model.Observation, _model.Actions, _model.RewardsInputs]]:
     """Create a data loader for training.
 
     Args:
@@ -463,7 +479,14 @@ class TorchDataLoader:
                 num_items += 1
                 # For JAX, convert to sharded arrays; for PyTorch, return torch tensors
                 if self._sharding is not None:
-                    yield jax.tree.map(lambda x: jax.make_array_from_process_local_data(self._sharding, x), batch)
+                    def _maybe_device_put(x):
+                        if isinstance(x, np.ndarray) and x.dtype.kind in {"U", "S", "O"}:
+                            return x
+                        if isinstance(x, (list, tuple)) and x and isinstance(x[0], str):
+                            return x
+                        return jax.make_array_from_process_local_data(self._sharding, x)
+
+                    yield jax.tree.map(_maybe_device_put, batch)
                 else:
                     yield jax.tree.map(torch.as_tensor, batch)
 
@@ -531,10 +554,29 @@ class DataLoaderImpl(DataLoader):
     def __init__(self, data_config: _config.DataConfig, data_loader: TorchDataLoader | RLDSDataLoader):
         self._data_config = data_config
         self._data_loader = data_loader
+        # Get sharding from underlying data loader for JAX conversion
+        self._sharding = getattr(data_loader, "_sharding", None)
 
     def data_config(self) -> _config.DataConfig:
         return self._data_config
 
     def __iter__(self):
         for batch in self._data_loader:
-            yield _model.Observation.from_dict(batch), batch["actions"]
+            # Create structured objects from numpy batch
+            obs = _model.Observation.from_dict(batch)
+            acts = batch["actions"]
+            rew = _model.RewardsInputs.from_dict(
+                data=batch,
+                reward_keys=self._data_config.reward_model_keys
+            )
+
+            # Convert Observation and Actions to JAX arrays, keep RewardsInputs as numpy
+            # This allows SARM (which uses numpy/torch) to work with RewardsInputs
+            if self._sharding is not None:
+                obs = jax.tree.map(
+                    lambda x: jax.make_array_from_process_local_data(self._sharding, x),
+                    obs
+                )
+                acts = jax.make_array_from_process_local_data(self._sharding, acts)
+
+            yield obs, acts, rew
